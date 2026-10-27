@@ -74,6 +74,21 @@ class Settings(BaseSettings):
     # plain comma-separated environment variable works without JSON quoting.
     cors_origins: str = "http://localhost:5173"
 
+    # --- Supabase Auth (chosen provider, 2026-10-27) -------------------------
+    supabase_url: str | None = None
+    # Only used when the project still uses the LEGACY shared JWT secret.
+    # Supabase's documentation discourages shared-secret verification.
+    supabase_jwt_secret: SecretStr | None = None
+    # Defaults are derived from supabase_url when blank.
+    supabase_jwt_issuer: str | None = None
+    supabase_jwt_jwks_url: str | None = None
+    # The `aud` claim is NOT documented in Supabase's JWT payload reference, so
+    # it is left unenforced by default. See `resolved_audience`.
+    supabase_jwt_audience: str | None = None
+    # Supabase's edge caches the JWKS for 10 minutes and warns against caching
+    # it longer in the application, because that would hinder key revocation.
+    jwks_cache_seconds: int = Field(default=600, ge=0, le=600)
+
     # --- Gnani speech providers (not integrated; access unverified) ----------
     gnani_stt_api_key: SecretStr | None = None
     gnani_stt_base_url: str | None = None
@@ -108,6 +123,21 @@ class Settings(BaseSettings):
             raise ValueError(f"log_level must be one of: {', '.join(sorted(allowed))}")
         return normalised
 
+    @field_validator("supabase_url", "supabase_jwt_jwks_url")
+    @classmethod
+    def _validate_supabase_url(cls, value: str | None) -> str | None:
+        if value is None or value == "":
+            return None
+        if value.startswith("https://"):
+            return value.rstrip("/")
+        # Plain HTTP would put user tokens on the wire in clear text. Allow it
+        # only for a loopback development server.
+        if value.startswith("http://localhost") or value.startswith("http://127.0.0.1"):
+            return value.rstrip("/")
+        raise ValueError(
+            "Supabase URLs must use https:// (or loopback http:// for local development)"
+        )
+
     @model_validator(mode="after")
     def _reject_unsafe_production_configuration(self) -> Settings:
         if self.environment is not Environment.production:
@@ -135,6 +165,58 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment is Environment.production
+
+    # --- Supabase Auth derived values ---------------------------------------
+
+    @property
+    def auth_mode(self) -> str:
+        """Which token-verification path is configured.
+
+        ``jwks``  - verify asymmetric signatures locally using the project's
+                    public JWKS. Supabase's recommended approach.
+        ``shared_secret`` - verify an HS256 token with the legacy shared secret.
+                    Supported for backward compatibility only; Supabase
+                    documents this as strongly discouraged.
+        ``unconfigured`` - no Supabase project configured, so no request can be
+                    authenticated.
+        """
+        if self.resolved_jwks_url:
+            return "jwks"
+        if self.supabase_jwt_secret is not None:
+            return "shared_secret"
+        return "unconfigured"
+
+    @property
+    def resolved_issuer(self) -> str | None:
+        if self.supabase_jwt_issuer:
+            return self.supabase_jwt_issuer.rstrip("/")
+        if self.supabase_url:
+            return f"{self.supabase_url}/auth/v1"
+        return None
+
+    @property
+    def resolved_jwks_url(self) -> str | None:
+        """JWKS discovery URL.
+
+        Supabase documents that appending ``/.well-known/jwks.json`` to the
+        issuer gives the public keys, so this is derived from the issuer.
+        """
+        if self.supabase_jwt_jwks_url:
+            return self.supabase_jwt_jwks_url
+        issuer = self.resolved_issuer
+        return f"{issuer}/.well-known/jwks.json" if issuer else None
+
+    @property
+    def resolved_audience(self) -> str | None:
+        """Expected ``aud`` claim, or ``None`` to skip the audience check.
+
+        Supabase's JWT payload reference does not list an ``aud`` claim, and
+        their own verification example checks only the signature and expiry.
+        Enforcing an invented value could reject every real token, so the
+        audience is only enforced when explicitly configured. Setting it is
+        recommended once a real access token has been inspected.
+        """
+        return self.supabase_jwt_audience or None
 
     def provider_status(self) -> dict[str, Any]:
         """Report provider configuration **without** exposing any secret value.
@@ -196,6 +278,21 @@ class Settings(BaseSettings):
             warnings.append(
                 f"ML_REASONING_MODE={self.reasoning_mode.value} is configured but no reasoning "
                 "provider has been approved for this project; treat extraction as non-functional."
+            )
+        if self.auth_mode == "unconfigured":
+            warnings.append(
+                "No Supabase project is configured, so no request can be authenticated. "
+                "Set ML_SUPABASE_URL in the backend environment (see README.md)."
+            )
+        if self.auth_mode == "shared_secret":
+            warnings.append(
+                "Verifying Supabase tokens with the legacy shared JWT secret. Supabase "
+                "documents this as strongly discouraged; prefer asymmetric signing keys."
+            )
+        if self.auth_mode == "jwks" and self.resolved_audience is None:
+            warnings.append(
+                "The token `aud` claim is not enforced because no audience is configured. "
+                "Confirm the real value from an access token and set ML_SUPABASE_JWT_AUDIENCE."
             )
         if not self.is_production and self.database_url == DEV_DATABASE_URL:
             warnings.append(

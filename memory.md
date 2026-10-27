@@ -70,9 +70,9 @@
 - **Codebase inspected:** Yes — 2026-10-27. The workspace contained only the six specification Markdown files plus `.freebuff/`. It was a greenfield project with no source code, no tests, no CI and no git repository.
 - **Repository created:** Yes — 2026-10-27. `git init -b main`; initial commit `9a7bcce` contains the six specification documents and a root `.gitignore`. No remote is configured yet, so nothing has been pushed.
 - **Frontend implementation:** Phase 1 shell implemented. React 19 + TypeScript 7 + Vite 8 + Tailwind 4. `npm run typecheck` and `npm run build` both pass.
-- **Backend implementation:** Phase 1 foundation implemented. FastAPI 0.162 + Pydantic 2.14 + pydantic-settings. Health and capability endpoints verified over real HTTP.
-- **Database:** None in use yet. No SQLAlchemy models, no migrations, no tables. `ML_DATABASE_URL` is validated for scheme only.
-- **Authentication:** Not implemented. Provider not confirmed; this blocks Phase 2.
+- **Backend implementation:** Phase 1 foundation plus Phase 2 authentication. FastAPI 0.162 + Pydantic 2.14 + pydantic-settings + SQLAlchemy 2.1 + Alembic 1.20 + PyJWT 2.15. Health, capability and `/api/v1/me` endpoints verified over real HTTP.
+- **Database:** SQLAlchemy engine/session layer and one Alembic migration (`profiles`) that has been run and reversed successfully against SQLite. **No PostgreSQL verification has happened.**
+- **Authentication:** Implemented as Supabase token verification (JWKS asymmetric path plus legacy shared-secret path), a `get_current_identity` dependency, and an ownership-scoped profile repository. **Verified only with locally minted tokens**, so the live Supabase handshake, the real JWKS fetch and the real `aud` claim remain **unverified**. `ML_SUPABASE_URL` is still unset, so no request can currently be authenticated.
 - **Gnani live integration:** **Not integrated and no request has ever been made.** Credentials, endpoints, supported languages and quotas remain unverified. A web research attempt on Gnani docs was cancelled by the user before returning results, so there is still no confirmed documentation reference in this repo.
 - **Reasoning provider:** Not selected and not implemented. `ML_REASONING_MODE` defaults to `disabled`; `mock`/`local`/`live` are configuration labels only, with no adapter code behind them.
 - **Deployment:** Not verified. Nothing has been deployed or pushed.
@@ -129,7 +129,31 @@ At the end of each meaningful work session, update this section without deleting
   - FastAPI/Starlette emit a deprecation warning about `httpx` vs `httpx2` in the test client. Harmless for now, worth revisiting.
   - Nothing has been pushed: no git remote is configured.
 - **Credentials or external access still needed (never include the secret itself):** Gnani API access and official documentation; a decision on the authentication provider; a database host decision; an approved reasoning provider.
-- **Next smallest safe step:** Add the git remote and push, then create the Supabase project and put its values in `backend/.env` before Phase 2 is implemented.
+- **Next smallest safe step:** Create the Supabase project, put its values in `backend/.env`, and confirm whether it uses asymmetric signing keys — then re-run the suite and exercise a real sign-in.
+
+### Session 2 — 2026-10-27 (continued)
+
+- **Phase worked on:** Phase 2 (authentication and authorization foundation).
+- **Pushed:** Remote `https://github.com/Saadkhan10412/MehnatLedger.git` added as `origin`; `main` pushed and verified (`refs/heads/main` == local HEAD).
+- **Research done before coding:** read Supabase's official JWT and signing-key documentation. Two findings shaped the implementation: (a) the JWKS endpoint returns **no keys** unless the project uses asymmetric signing keys, and (b) Supabase's JWT payload reference does **not** list an `aud` claim, so enforcing an invented audience would have rejected every real token.
+- **Tests/commands actually run:**
+  - `uv run pytest` → **50 passed**, 0 failed (2 third-party warnings). Up from 18.
+  - `uv run ruff check .` → All checks passed.
+  - `uv run ruff format --check .` → 31 files already formatted.
+  - `uv run alembic upgrade head` → applied `da06bf3679b5` successfully.
+  - Migration verified by direct SQLite inspection: `profiles(id CHAR(32) PK, created_at, updated_at)` and **0 rows**.
+  - Downgrade to `base` verified to remove the table (covered by a test).
+  - Restarted uvicorn and called the API over real HTTP: `/api/v1/health` → 200; `/api/v1/me` with a bogus bearer token → **503** with a setup-requirement message, because no Supabase project is configured. That is deliberate: 503 states the truth instead of blaming the user's credential.
+  - Startup log confirmed two honest warnings (no Supabase configured; local SQLite in use).
+- **Known defects / limitations:**
+  - **No live-provider verification.** Every auth test mints tokens from an in-process keypair and feeds the verifier an in-process JWKS, so only the network fetch is stubbed. The real Supabase handshake is untested and must not be described as working.
+  - **PostgreSQL still unverified**, as is the Supabase pooler/direct connection choice.
+  - The `aud` claim is **not enforced** by default. The real value should be read from an actual access token and then set in `ML_SUPABASE_JWT_AUDIENCE`.
+  - No sign-in UI. The frontend has no way to obtain a token yet, so `/api/v1/me` is only reachable with a manually supplied token.
+  - The capabilities endpoint does not yet report whether authentication is configured, so the UI cannot currently show that state.
+  - Frontend still has no automated tests.
+- **Credentials or external access still needed:** a Supabase project (URL, and either asymmetric signing keys with JWKS or the legacy secret), plus the signing configuration the project actually uses.
+- **Decisions recorded during this phase:** the `profiles` table is named `profiles` (not `users`) to avoid confusion with Supabase's `auth.users`, which this app never writes to; the profile row stores **no** personal data beyond the auth subject; rows are created lazily on first authenticated request, race-safe via rollback-and-read on duplicate key.
 
 ### Supabase research findings (verified 2026-10-27)
 

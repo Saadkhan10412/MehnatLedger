@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.v1 import system
+from app.api.v1 import me, system
 
 api_v1_router = APIRouter()
 api_v1_router.include_router(system.router, tags=["system"])
+api_v1_router.include_router(me.router, tags=["account"])

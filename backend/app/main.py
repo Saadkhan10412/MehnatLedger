@@ -13,7 +13,9 @@ from fastapi.responses import JSONResponse
 from app import __version__
 from app.api.v1.router import api_v1_router
 from app.core.config import Settings, get_settings
+from app.core.db import create_db_engine, create_session_factory
 from app.core.logging import configure_logging, log_startup_diagnostics
+from app.security.supabase_jwt import build_token_verifier
 
 logger = logging.getLogger("mehnatledger.error")
 
@@ -23,6 +25,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
     log_startup_diagnostics(settings)
     yield
+    app.state.db_engine.dispose()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -45,6 +48,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url=None if resolved.is_production else "/openapi.json",
     )
     app.state.settings = resolved
+
+    # The engine connects lazily, so building it here does not require the
+    # database to be reachable at import time.
+    engine = create_db_engine(resolved)
+    app.state.db_engine = engine
+    app.state.session_factory = create_session_factory(engine)
+    # None when no Supabase project is configured; protected routes then report a
+    # setup problem (503) rather than a bad credential (401).
+    app.state.token_verifier = build_token_verifier(resolved)
 
     app.add_middleware(
         CORSMiddleware,
