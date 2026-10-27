@@ -67,15 +67,16 @@
 
 ## 7. Current implementation status
 
-- **Codebase inspected:** Not yet recorded. The next agent must inspect the actual repository before assuming its state.
-- **Frontend implementation:** Unknown / not verified.
-- **Backend implementation:** Unknown / not verified.
-- **Database/migrations:** Unknown / not verified.
-- **Authentication:** Provider and implementation not confirmed.
-- **Gnani live integration:** Not verified; do not assume API credentials, credits, endpoints or a successful request exist.
-- **Reasoning provider:** Not selected for production.
-- **Deployment:** Not verified.
-- **Tests:** No test results are asserted by this memory file.
+- **Codebase inspected:** Yes — 2026-10-27. The workspace contained only the six specification Markdown files plus `.freebuff/`. It was a greenfield project with no source code, no tests, no CI and no git repository.
+- **Repository created:** Yes — 2026-10-27. `git init -b main`; initial commit `9a7bcce` contains the six specification documents and a root `.gitignore`. No remote is configured yet, so nothing has been pushed.
+- **Frontend implementation:** Phase 1 shell implemented. React 19 + TypeScript 7 + Vite 8 + Tailwind 4. `npm run typecheck` and `npm run build` both pass.
+- **Backend implementation:** Phase 1 foundation implemented. FastAPI 0.162 + Pydantic 2.14 + pydantic-settings. Health and capability endpoints verified over real HTTP.
+- **Database:** None in use yet. No SQLAlchemy models, no migrations, no tables. `ML_DATABASE_URL` is validated for scheme only.
+- **Authentication:** Not implemented. Provider not confirmed; this blocks Phase 2.
+- **Gnani live integration:** **Not integrated and no request has ever been made.** Credentials, endpoints, supported languages and quotas remain unverified. A web research attempt on Gnani docs was cancelled by the user before returning results, so there is still no confirmed documentation reference in this repo.
+- **Reasoning provider:** Not selected and not implemented. `ML_REASONING_MODE` defaults to `disabled`; `mock`/`local`/`live` are configuration labels only, with no adapter code behind them.
+- **Deployment:** Not verified. Nothing has been deployed or pushed.
+- **Tests:** 18 backend tests pass (`uv run pytest`: 18 passed, 0 failed). Frontend has **no automated test suite yet** — it is checked by `tsc --noEmit` and a production build only, which is not the same as tested behaviour.
 
 Update each item with evidence after inspecting or changing the repository. Do not use “done” unless there is implementation evidence and, where appropriate, test/deployment verification.
 
@@ -95,11 +96,42 @@ Do not block the whole project for every open decision. Proceed with reversible,
 
 At the end of each meaningful work session, update this section without deleting previous unresolved risks:
 
-- **Date/session:** YYYY-MM-DD or an accurate current value.
-- **Phase worked on:**
-- **Files changed:**
+### Session 1 — 2026-10-27
+
+- **Phase worked on:** Phase 0 (discover and plan) and Phase 1 (project foundation and design shell).
+- **Files changed:** Created `.gitignore`, `README.md`, `backend/` (pyproject, `.env.example`, app package, tests) and `frontend/` (Vite + React + TS + Tailwind app shell, pages, components, API client). 54 files in the Phase 1 commit.
 - **Tests/commands actually run:**
-- **Results:**
+  - `cd backend && uv run pytest` → **18 passed**, 1 third-party deprecation warning.
+  - `cd backend && uv run ruff check .` → **All checks passed**.
+  - `cd backend && uv run ruff format --check .` → 14 files already formatted.
+  - `cd backend && uv run uvicorn app.main:app --host 127.0.0.1 --port 8000` → started; `GET /api/v1/health` and `GET /api/v1/system/capabilities` both returned **HTTP 200** with expected JSON.
+  - `cd frontend && npx tsc --noEmit` → exit 0.
+  - `cd frontend && npm run build` → built successfully (286.86 kB JS / 18.72 kB CSS).
+  - `cd frontend && npm run dev` → served on 127.0.0.1:5173; `GET /api/v1/health` through the Vite proxy returned the backend JSON, confirming the proxy works.
+  - Browser check: `/` redirected to `/choose-mode`; choosing Business navigated to `/business`; dashboard rendered empty states; the capabilities fetch returned 200; no console errors.
+  - Bundle check: `grep -o -i "gnani|api_key|apikey|secret" dist/assets/*.js` found only `api_key_configured` (a boolean field name). No provider name or credential value in the browser bundle.
+- **Results:** Phase 1 exit gate met for the parts that can be verified here. Both apps start with documented commands, navigation works, no credential is reachable from the browser, and the lint/build checks pass.
 - **Known defects / limitations:**
-- **Credentials or external access still needed (never include the secret itself):**
-- **Next smallest safe step:**
+  - Tests run against SQLite, not PostgreSQL. No PostgreSQL server exists in this environment, so PostgreSQL behaviour is **unverified**.
+  - The frontend has no automated tests; TypeScript and a build are its only checks.
+  - Mode selection is a device-level `localStorage` value, not an account attribute.
+  - `voice_enabled` is hardcoded `false` because no voice endpoints exist; it is not derived from provider state.
+  - FastAPI/Starlette emit a deprecation warning about `httpx` vs `httpx2` in the test client. Harmless for now, worth revisiting.
+  - Nothing has been pushed: no git remote is configured.
+- **Credentials or external access still needed (never include the secret itself):** Gnani API access and official documentation; a decision on the authentication provider; a database host decision; an approved reasoning provider.
+- **Next smallest safe step:** Obtain the answers below, then implement Phase 2 (authentication and authorization foundation) with the first real database models and migrations.
+
+## 10. Decisions and assumptions made in Phase 1
+
+Recorded so that later sessions can see what was assumed rather than approved.
+
+- **Money representation (chosen, not yet used):** currency will be stored as integer minor units (paise) so SQLite and PostgreSQL behave identically and binary floating point is never used. No money code exists yet.
+- **Local database:** SQLite is used for local development and tests because no PostgreSQL server is available here. PostgreSQL remains the production target; the settings module refuses to start in production with the development default.
+- **Settings prefix:** all backend environment variables use the `ML_` prefix; secrets use Pydantic `SecretStr` so they are masked in logs and dumps.
+- **Capability endpoint:** `GET /api/v1/system/capabilities` is deliberately unauthenticated and returns booleans and enum labels only — never a credential or a base URL.
+- **Unsafe production config fails closed:** production requires a real database URL and explicit CORS origins, and disables the interactive docs.
+- **CORS credentials disabled:** the API authenticates with bearer tokens, not cookies, so `allow_credentials` is `False`.
+- **Mode storage key:** `mehnatledger.shell.mode` in `localStorage`, explicitly marked temporary until accounts exist.
+- **Voice UI while unimplemented:** the voice action is rendered **disabled** with a plain explanation rather than as a button that silently does nothing.
+- **Not-built screens:** every placeholder links to `/not-built` and states that nothing was saved.
+- **No demo data:** no seed script, no fixtures inserted into any user-facing database, and no seeded accounts. Test fixtures use obviously fake values that never reach the application database.

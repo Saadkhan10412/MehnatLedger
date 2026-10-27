@@ -1,0 +1,75 @@
+@import 'tailwindcss';
+
+/* =============================================================================
+   MehnatLedger design tokens (design.md section 2)
+
+   Contrast targets: every text/background pairing below was chosen to meet
+   WCAG AA (4.5:1) for normal text. Status is never communicated by colour
+   alone -- callers must pair these with a text label.
+
+   Font stack deliberately uses locally available fonts (including Devanagari
+   fallbacks) so no webfont dependency or network request is required.
+   ========================================================================== */
+@theme {
+  --font-sans:
+    system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', 'Nirmala UI', 'Noto Sans Devanagari',
+    sans-serif;
+
+  /* Surfaces */
+  --color-surface: #faf7f2;
+  --color-surface-raised: #ffffff;
+  --color-line: #e6e2da;
+  --color-line-strong: #d5cfc4;
+
+  /* Text */
+  --color-ink: #17233a;
+  --color-ink-muted: #5a6b85;
+
+  /* Primary accent: green/teal for confirmed, positive actions */
+  --color-primary: #0e7c66;
+  --color-primary-strong: #0b6455;
+  --color-primary-soft: #e6f4f0;
+
+  /* Secondary accent: muted blue for neutral navigation */
+  --color-secondary: #3b6ea5;
+  --color-secondary-strong: #2f5885;
+  --color-secondary-soft: #e8f0f9;
+
+  /* Status */
+  --color-warning: #8a4f0a;
+  --color-warning-soft: #fdf3e3;
+  --color-danger: #b3261e;
+  --color-danger-soft: #fcebe9;
+
+  --radius-card: 0.875rem;
+}
+
+@layer base {
+  html {
+    /* Respect the user's text-size preference. */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-surface);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* A visible, consistent focus ring is required for keyboard users. */
+  :focus-visible {
+    outline: 2px solid var(--color-secondary);
+    outline-offset: 2px;
+    border-radius: 0.25rem;
+  }
+
+  h1,
+  h2,
+  h3 {
+    line-height: 1.25;
+    font-weight: 600;
+  }
+}
