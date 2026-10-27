@@ -1,0 +1,51 @@
+# =============================================================================
+# MehnatLedger .gitignore
+# Rule: environment files and secrets are NEVER committed.
+# =============================================================================
+
+# --- Environment and secret files ---------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Freebuff project marker (must not be committed)
+.freebuff/project-id
+
+# --- Local development databases ---------------------------------------------
+# Local dev/test SQLite files must never be confused with real user data.
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# --- Python / backend ---------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# --- Node / frontend ----------------------------------------------------------
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# --- Logs (may contain private data - keep out of git) ------------------------
+*.log
+logs/
+
+# --- Editors and OS -----------------------------------------------------------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
