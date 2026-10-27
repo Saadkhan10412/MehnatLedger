@@ -155,6 +155,46 @@ At the end of each meaningful work session, update this section without deleting
 - **Credentials or external access still needed:** a Supabase project (URL, and either asymmetric signing keys with JWKS or the legacy secret), plus the signing configuration the project actually uses.
 - **Decisions recorded during this phase:** the `profiles` table is named `profiles` (not `users`) to avoid confusion with Supabase's `auth.users`, which this app never writes to; the profile row stores **no** personal data beyond the auth subject; rows are created lazily on first authenticated request, race-safe via rollback-and-read on duplicate key.
 
+### Session 3 — 2026-10-27 (live Supabase verification)
+
+The owner supplied `ML_SUPABASE_URL` and a publishable key, written only to the
+git-ignored `backend/.env`. **Verified live against project
+`ybrubxbwiypjyenvjgfa`, not stubbed:**
+
+- `GET /auth/v1/.well-known/openid-configuration` → **200**, and its `issuer`
+  (`https://ybrubxbwiypjyenvjgfa.supabase.co/auth/v1`) **exactly matches** the
+  issuer the settings module derives from the project URL.
+- `GET /auth/v1/.well-known/jwks.json` → **200 with 1 key**: `kid=7f16acdd-e845-
+  486d-897b-7bac43a16a45`, **`alg=ES256`**, `kty=EC`, `use=sig`,
+  `key_ops=[verify]`. `id_token_signing_alg_values_supported` lists
+  `['RS256','HS256','ES256']`, consistent with it.
+- **This resolves the asymmetric-vs-legacy fork**: the project *does* use
+  asymmetric signing keys, so the JWKS path is the correct one and Supabase's
+  shared-secret warning path is not needed here.
+- `claims_supported` **includes `aud`**, so enforcing an audience is legitimate
+  for this project. Its exact *value* is not published anywhere, so it remains
+  unset and must be read from a real access token.
+- Only `authorization_code` and `refresh_token` grants are advertised in the
+  OIDC document, which matters when the sign-in flow is built.
+
+**Bug found and fixed by this verification:** a blank `ML_SUPABASE_JWT_SECRET=`
+was wrapped by Pydantic in `SecretStr("")`, which compares `is not None`, so
+`auth_mode` reported `shared_secret` and the verifier would have accepted tokens
+signed with an **empty HMAC key**. Fixed with `env_ignore_empty=True` plus a
+guarded `shared_secret_value` property that treats blank and whitespace-only as
+unset; the publishable key is now held as `SecretStr` so it cannot reach a repr
+or log. Regression tests added.
+
+- **Tests/commands actually run:** `uv run pytest` → **55 passed** (was 50);
+  `uv run ruff check .` and `ruff format --check .` → clean;
+  `uv run python scripts/verify_supabase.py` → exit **2** (INCOMPLETE),
+  3 PASS / 2 SKIP.
+- **Still unverified:** any real access token (issuer/audience/round-trip),
+  PostgreSQL, and a real user sign-in flow. No user account was created and no
+  Supabase API that mutates data was called.
+- **Next smallest safe step:** obtain a real access token, or authorization to
+  create a throwaway test user, to complete the token check.
+
 ### Supabase research findings (verified 2026-10-27)
 
 Read from official Supabase documentation. Recorded because the integration depends on

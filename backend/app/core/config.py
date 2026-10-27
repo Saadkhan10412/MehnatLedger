@@ -58,6 +58,10 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
+        # An empty variable must fall back to the field default rather than
+        # becoming a configured empty value. Without this, `ML_X=` would yield
+        # SecretStr(""), which reads as "configured".
+        env_ignore_empty=True,
     )
 
     # --- Application ---------------------------------------------------------
@@ -79,6 +83,15 @@ class Settings(BaseSettings):
     # Only used when the project still uses the LEGACY shared JWT secret.
     # Supabase's documentation discourages shared-secret verification.
     supabase_jwt_secret: SecretStr | None = None
+    # Supabase's PUBLISHABLE key (`sb_publishable_...`). Supabase considers this
+    # value public because it is intended to ship to browsers. It is held as
+    # SecretStr anyway so it can never appear in logs or `repr(settings)`, and as
+    # a guard in case a real secret key is ever entered here by mistake.
+    #
+    # Not used by the JWKS verification path, which only needs a project URL.
+    # Kept for the upcoming sign-in flow, where GoTrue REST calls expect it in the
+    # `apikey` header.
+    supabase_publishable_key: SecretStr | None = None
     # Defaults are derived from supabase_url when blank.
     supabase_jwt_issuer: str | None = None
     supabase_jwt_jwks_url: str | None = None
@@ -169,6 +182,19 @@ class Settings(BaseSettings):
     # --- Supabase Auth derived values ---------------------------------------
 
     @property
+    def shared_secret_value(self) -> str | None:
+        """The legacy shared JWT secret, or ``None`` when unset or blank.
+
+        A blank value must never count as configured. An empty HMAC key would
+        let anyone forge a token by signing with an empty secret, so both an
+        empty string and a whitespace-only string are treated as absent.
+        """
+        if self.supabase_jwt_secret is None:
+            return None
+        value = self.supabase_jwt_secret.get_secret_value()
+        return value if value.strip() else None
+
+    @property
     def auth_mode(self) -> str:
         """Which token-verification path is configured.
 
@@ -182,7 +208,7 @@ class Settings(BaseSettings):
         """
         if self.resolved_jwks_url:
             return "jwks"
-        if self.supabase_jwt_secret is not None:
+        if self.shared_secret_value is not None:
             return "shared_secret"
         return "unconfigured"
 
@@ -288,6 +314,12 @@ class Settings(BaseSettings):
             warnings.append(
                 "Verifying Supabase tokens with the legacy shared JWT secret. Supabase "
                 "documents this as strongly discouraged; prefer asymmetric signing keys."
+            )
+        secret_value = self.shared_secret_value
+        if secret_value is not None and len(secret_value) < 32:
+            warnings.append(
+                "The shared JWT secret is shorter than 32 characters, which is weak for "
+                "HMAC signing (RFC 7518 recommends at least 256 bits)."
             )
         if self.auth_mode == "jwks" and self.resolved_audience is None:
             warnings.append(

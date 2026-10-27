@@ -111,6 +111,69 @@ def test_warning_when_reasoning_provider_not_approved() -> None:
     assert any("no reasoning provider has been approved" in w for w in warnings)
 
 
+def test_blank_env_vars_never_enable_shared_secret_mode(tmp_path) -> None:
+    """A blank `ML_SUPABASE_JWT_SECRET=` must not count as configured.
+
+    Regression test: an empty value was wrapped in SecretStr(""), which is
+    `not None`, so auth_mode became "shared_secret" and the verifier would have
+    accepted tokens signed with an empty HMAC key.
+    """
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "ML_SUPABASE_URL=\nML_SUPABASE_JWT_SECRET=\nML_SUPABASE_JWT_AUDIENCE=\n",
+        encoding="utf-8",
+    )
+
+    settings = Settings(_env_file=env_file)
+
+    assert settings.supabase_url is None
+    assert settings.supabase_jwt_secret is None
+    assert settings.shared_secret_value is None
+    assert settings.auth_mode == "unconfigured"
+
+
+def test_blank_secret_passed_directly_is_still_treated_as_unset() -> None:
+    """The guarded accessor must hold even if a blank value reaches the model."""
+    settings = _settings(supabase_jwt_secret="")
+
+    assert settings.shared_secret_value is None
+    assert settings.auth_mode == "unconfigured"
+
+    whitespace = _settings(supabase_jwt_secret="   ")
+    assert whitespace.shared_secret_value is None
+    assert whitespace.auth_mode == "unconfigured"
+
+
+def test_real_shared_secret_is_returned_exactly() -> None:
+    settings = _settings(supabase_jwt_secret=FAKE_KEY)
+
+    assert settings.shared_secret_value == FAKE_KEY
+    assert settings.auth_mode == "shared_secret"
+    # Still masked in the representations we might log.
+    assert FAKE_KEY not in repr(settings)
+
+
+def test_short_shared_secret_raises_a_warning() -> None:
+    warnings = _settings(supabase_jwt_secret="short").configuration_warnings()
+    assert any("shorter than 32 characters" in w for w in warnings)
+
+
+def test_publishable_key_is_never_surfaced() -> None:
+    """The publishable key must not reach an API response, logs or a repr.
+
+    Supabase treats this value as public, but holding it as SecretStr also
+    guards against a genuine secret key ending up in the same field.
+    """
+    settings = _settings(supabase_publishable_key="sb_publishable_test")
+
+    assert "sb_publishable_test" not in str(settings.provider_status())
+    assert "sb_publishable_test" not in repr(settings)
+    assert "sb_publishable_test" not in str(settings.model_dump())
+    # Deliberately reachable on the server only, for the sign-in flow.
+    assert settings.supabase_publishable_key is not None
+    assert settings.supabase_publishable_key.get_secret_value() == "sb_publishable_test"
+
+
 def test_default_environment_is_development() -> None:
     settings = _settings()
     assert settings.environment is Environment.development

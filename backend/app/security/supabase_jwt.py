@@ -332,7 +332,9 @@ def build_token_verifier(
         )
 
     if mode == "shared_secret":
-        secret = settings.supabase_jwt_secret
+        # Use the guarded accessor: a blank configured value must never become
+        # an empty HMAC key.
+        secret = settings.shared_secret_value
         logger.warning(
             "Verifying Supabase tokens with a shared secret. Supabase documents this "
             "approach as strongly discouraged; migrate to asymmetric signing keys."
@@ -340,7 +342,7 @@ def build_token_verifier(
         return SupabaseTokenVerifier(
             issuer=settings.resolved_issuer,
             audience=settings.resolved_audience,
-            shared_secret=secret.get_secret_value() if secret else None,
+            shared_secret=secret,
         )
 
     return None

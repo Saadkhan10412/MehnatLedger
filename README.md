@@ -216,6 +216,42 @@ network fetch is stubbed, so signature, expiry and issuer handling are genuinely
 tested — while the live Supabase handshake is **not** verified and must not be
 described as working.
 
+## Verifying the live Supabase connection
+
+Once `backend/.env` contains a real project URL, run:
+
+```bash
+cd backend
+uv run python scripts/verify_supabase.py
+```
+
+It performs the checks that cannot be done offline: a real HTTPS fetch of the
+project's JWKS document, the project's OpenID configuration (authoritative
+issuer), database reachability, and — when you supply a real access token —
+an actual verification through the application's own verifier:
+
+```bash
+# The token is fingerprinted with SHA-256 and never printed.
+ML_VERIFY_ACCESS_TOKEN="<access token>" uv run python scripts/verify_supabase.py
+# or
+uv run python scripts/verify_supabase.py --token-file /path/to/token.txt
+```
+
+Exit codes: `0` all checks passed, `1` a check failed, `2` a check could not be
+performed (for example, no token supplied, or PostgreSQL not configured).
+
+### Verified so far (2026-10-27, against project `ybrubxbwiypjyenvjgfa`)
+
+| Check | Result |
+| --- | --- |
+| OpenID configuration reachable, `issuer` matches derived issuer | **PASS** |
+| JWKS document returns keys | **PASS** — 1 key, `alg=ES256`, `kty=EC`, `use=sig` |
+| Project uses asymmetric signing keys (so the JWKS path works) | **PASS** — confirmed, not assumed |
+| `aud` is a supported claim on this project | **PASS** — listed in `claims_supported` |
+| Verifying a real access token end to end | **NOT DONE** — no access token supplied |
+| Exact `aud` value to enforce | **UNKNOWN** — must be read from a real token |
+| PostgreSQL connectivity and migrations | **NOT DONE** — no PostgreSQL URL configured |
+
 ## Next phase
 
 Finish `phases.md` **Phase 2** by connecting a real Supabase project and
