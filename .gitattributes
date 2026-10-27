@@ -1,0 +1,17 @@
+# Normalize line endings so Windows checkouts and CI agree.
+* text=auto eol=lf
+
+# Binary files must never be line-ending converted.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+
+# Lockfiles and generated config are diffed constantly; keep them stable.
+package-lock.json text eol=lf
+uv.lock text eol=lf
