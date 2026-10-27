@@ -82,13 +82,23 @@ Update each item with evidence after inspecting or changing the repository. Do n
 
 ## 8. Open decisions to revisit only when they block work
 
+### Resolved by the owner on 2026-10-27
+
+- **Authentication provider:** Supabase Auth. The owner deferred to the agent's recommendation, so this is a recommendation the owner accepted, not an independently stated preference. Recommended because `architecture.md` proposed it, it is a managed provider (so we do not hand-roll password hashing and reset flows), and it pairs with the chosen database.
+- **Database host:** Supabase PostgreSQL.
+- **Gnani access:** the owner states they **have** access and will configure keys in `backend/.env`. This has not been independently verified, and no request has been made. Credentials must never be pasted into chat.
+
+### Still open
+
+- **Git remote:** not supplied yet. Three commits exist locally and nothing has been pushed.
+- **Supabase project:** does not exist yet. No URL, JWT secret or connection string has been provided, so no authentication or PostgreSQL code has been written or tested.
 - Does one account support both Business and Worker modes, or is one primary role selected at onboarding?
-- Which authentication provider and deployment platform will be used?
-- Which initial language(s) have a verified voice pipeline and acceptable extraction accuracy?
+- Which initial language(s) have a verified voice pipeline and acceptable extraction accuracy? The owner has access but no language has been confirmed as tested.
 - Which reasoning model/provider can the owner access within approved cost constraints?
 - What are the actual Gnani credit/quota limits and how much should a user be allowed to consume?
 - Is offline entry required for the first release?
 - What retention/export behavior applies to shared history after unlinking or account deletion?
+- Deployment platform for the frontend and backend (not selected).
 
 Do not block the whole project for every open decision. Proceed with reversible, clearly labelled defaults where safe; ask the owner only when a decision materially changes security, cost, data model or product behavior.
 
@@ -119,7 +129,36 @@ At the end of each meaningful work session, update this section without deleting
   - FastAPI/Starlette emit a deprecation warning about `httpx` vs `httpx2` in the test client. Harmless for now, worth revisiting.
   - Nothing has been pushed: no git remote is configured.
 - **Credentials or external access still needed (never include the secret itself):** Gnani API access and official documentation; a decision on the authentication provider; a database host decision; an approved reasoning provider.
-- **Next smallest safe step:** Obtain the answers below, then implement Phase 2 (authentication and authorization foundation) with the first real database models and migrations.
+- **Next smallest safe step:** Add the git remote and push, then create the Supabase project and put its values in `backend/.env` before Phase 2 is implemented.
+
+### Supabase research findings (verified 2026-10-27)
+
+Read from official Supabase documentation. Recorded because the integration depends on
+current provider behaviour that must not be guessed.
+
+- Supabase currently provides **two** signing systems: the **legacy JWT secret** (one shared
+  secret signing everything, no longer recommended) and the newer **Signing keys** system
+  (asymmetric RSA/Elliptic-Curve keys, or a shared secret). Source:
+  <https://supabase.com/docs/guides/auth/signing-keys>
+- With asymmetric signing keys, the public key is published at a **JWKS discovery endpoint**
+  (`/.well-known/jwks.json`). Verification is then local and fast, key rotation is automatic via
+  discovery, and rotation does **not** force users to sign out. With the legacy shared secret,
+  verification involves the Auth server and rotation can break components that verify with it.
+- Supabase's guidance is to verify with `getClaims()`/the JWT verification guide. Both the JWKS
+  and legacy-secret approaches exist, so the correct one depends on the project's actual settings —
+  this must be checked in the dashboard, not assumed.
+- **SQLAlchemy/connection strings:** stationary servers (VM, long-running container) should use the
+  **direct** connection string. It maps to an **IPv6** address and will not work in an IPv4-only
+  environment; the documented alternatives are the Supavisor pooler in **session** mode (port 5432)
+  or the IPv4 add-on on a paid plan. Auto-scaling/serverless deployments should instead use the
+  pooler in **transaction** mode (port 6543) with `NullPool`. Source:
+  <https://supabase.com/kb/troubleshooting/using-sqlalchemy-with-supabase-FUqebT>
+- The Gravity Index integration catalog does **not** carry Supabase, so no tracked setup link or
+  install guidance was available from it. No setup URL has been provided or invented.
+
+**Not verified:** that any Supabase project exists, that its signing configuration is asymmetric,
+that the pooler/direct choice works from this machine, or that Supabase free tier limits suit this
+project. None of these can be confirmed without the owner's project.
 
 ## 10. Decisions and assumptions made in Phase 1
 

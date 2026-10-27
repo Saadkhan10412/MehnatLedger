@@ -21,9 +21,10 @@ This repository is being built in phases (`phases.md`). It currently contains
 | Business and worker ledgers, balances (Phase 3) | Not started |
 | Shared Hisaab and disputes (Phase 4) | Not started |
 | Voice entry and AI providers (Phase 5) | Not started |
-| Gnani speech integration | **Not integrated.** Access, endpoints, supported languages and quotas are unverified. |
+| Gnani speech integration | **Not integrated.** The owner has access and will supply credentials via `backend/.env`, but no request has ever been made and no endpoint, quota or language list has been verified. |
 | Reasoning / extraction provider | **Not selected.** No provider has been approved. |
-| PostgreSQL | Production target, but no PostgreSQL server is available in this development environment, so local development uses SQLite. |
+| Supabase (Auth + PostgreSQL) | **Chosen by the owner (2026-10-27), not yet implemented or connected.** No Supabase project exists for this repo yet. |
+| PostgreSQL | Chosen production target is Supabase Postgres. No database is in use yet; local development uses SQLite because no PostgreSQL server is available here. |
 
 Screens that correspond to unbuilt features say so in plain language and
 **do not save anything**. The application is never seeded with invented sample
@@ -105,15 +106,22 @@ production.
 
 ## Database
 
-PostgreSQL is the production target. For local development the default is a
-throwaway SQLite file (`backend/mehnatledger_dev.db`, git-ignored) because no
-PostgreSQL server is available in this environment.
+Supabase PostgreSQL is the chosen production target. For local development the
+default is a throwaway SQLite file (`backend/mehnatledger_dev.db`, git-ignored)
+because no PostgreSQL server is available in this environment.
 
-To point the backend at PostgreSQL instead:
+To point the backend at Supabase PostgreSQL, copy the connection string from
+Supabase **Dashboard → Connect** and change its scheme to `postgresql+psycopg://`:
 
 ```bash
-export ML_DATABASE_URL="postgresql+psycopg://USER:PASSWORD@HOST:5432/DBNAME"
+export ML_DATABASE_URL="postgresql+psycopg://postgres:PASSWORD@db.PROJECTREF.supabase.co:5432/postgres"
 ```
+
+Use the **direct** connection string for a stationary server (a VM or
+long-running container). Supabase's documentation notes that the direct
+connection resolves to an IPv6 address and will not work on an IPv4-only
+network; in that case use the Supavisor pooler in **session** mode (port 5432).
+Do not use transaction mode (port 6543) for migrations.
 
 Do not commit a real connection string: it contains a password.
 
@@ -147,8 +155,25 @@ frontend/
   folder from sync if you hit odd file-locking errors.
 - There is no `gh` CLI on this machine, so remote setup is done with plain `git`.
 
+## Authentication
+
+Supabase Auth was chosen by the owner on 2026-10-27 (see `memory.md`). It is not
+implemented yet. The planned approach, based on Supabase's current official
+documentation:
+
+- Verify user access tokens against the project's public **JWKS** endpoint
+  (`{ML_SUPABASE_URL}/auth/v1/.well-known/jwks.json`) using asymmetric signing
+  keys. Supabase documents this as the recommended approach: verification is
+  local, key rotation is automatic, and rotation does not sign users out.
+- The **legacy shared JWT secret** is supported for backward compatibility but is
+  no longer recommended. If a project still uses it, rotation will break any
+  component verifying with the shared secret.
+- The frontend must never receive a service-role key. Privileged database
+  credentials stay server-side.
+
 ## Next phase
 
-`phases.md` **Phase 2 — Authentication and authorization foundation**, which is
-blocked pending a decision on the authentication provider and database host.
-See `memory.md` section 9 for the current handoff state.
+`phases.md` **Phase 2 — Authentication and authorization foundation**. The
+authentication provider and database host are now decided; the remaining
+blockers are a git remote and a Supabase project with credentials in
+`backend/.env`. See `memory.md` section 9 for the current handoff state.
